@@ -1,0 +1,73 @@
+#!/usr/bin/env python2
+
+import time
+import getpass
+import logging
+import schedule
+import argparse
+
+from NotiCentr.notifier import EmailSender, SmtpServer
+from NotiCentr.msg import EmailMsg
+from NotiCentr.account import EmailAccount
+from NotiCentr.poller import WeatherPoller
+
+debug_mode_poll_interval_in_seconds = 5
+scheduled_poll_time_str = "18:00"
+notifier_email = 'noticentr@gmail.com'
+notifier_account = EmailAccount(notifier_email, getpass.getpass())
+notifier_server = SmtpServer()
+weather_poller = None
+notifier_sender = EmailSender(notifier_email, notifier_server,
+                              notifier_account)
+
+
+def check_weather_and_notify():
+    global poll_interval_in_seconds
+    global notifier_account
+    global weather_poller
+    if weather_poller is None:
+        weather_poller = WeatherPoller()
+    weather_poller.poll_data()
+    alert_msg_list = weather_poller.check_temperature_change()
+    if alert_msg_list:
+        mail = EmailMsg(Subject='Weather Notice',
+                        From=notifier_email,
+                        To=[notifier_email],
+                        Text='\n'.join(alert_msg_list))
+        rc = notifier_sender.send(mail)
+        if rc != 0:
+            logging.error("Sending email failed")
+
+
+def main():
+    global debug_mode_poll_interval_in_seconds
+    parser = argparse.ArgumentParser(description="Simple weather info poller",
+                                     add_help=True)
+    parser.add_argument(
+        '-d',
+        '--debug',
+        dest='debug',
+        action='store_true',
+        default=False,
+        help='Debug: Start with debug mode, polling interval'
+        'will be %s seconds' % debug_mode_poll_interval_in_seconds)
+    args = parser.parse_args()
+    if args.debug:
+        schedule.every(debug_mode_poll_interval_in_seconds).seconds.do(
+            check_weather_and_notify)
+    else:
+        schedule.every().day.at(scheduled_poll_time_str).do(
+            check_weather_and_notify)
+
+    while True:
+        try:
+            logging.info("Schedule loop started...")
+            schedule.run_pending()
+            time.sleep(1)
+        except KeyboardInterrupt:
+            print "KeyboardInterrupt captured, exitting current loop"
+            break
+
+
+if __name__ == '__main__':
+    main()

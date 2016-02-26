@@ -1,0 +1,19 @@
+# Linux build configuration for Travis CI
+
+sudo: false
+
+os:
+  - linux
+
+before_install:
+  - pip install --user pyowm
+  - pip install --user schedule
+  - pip install --user twisted
+  - pip install --user nose
+  - pip install --user service_identity
+  - pip install --user Quandl
+  - pip install --user pandas
+  - pip install --user openexchangerates
+
+script:
+  - nosetests -s -v -d -I email_handler_tests

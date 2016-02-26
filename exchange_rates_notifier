@@ -1,0 +1,94 @@
+#!/usr/bin/env python2
+
+import time
+import getpass
+import logging
+import schedule
+import argparse
+
+from NotiCentr.notifier import EmailSender, SmtpServer
+from NotiCentr.msg import EmailMsg
+from NotiCentr.account import EmailAccount
+from NotiCentr.poller import ExchangeRatesPoller
+
+debug_mode_poll_interval_in_seconds = 5
+scheduled_poll_time_str = "18:00"
+notifier_email = 'noticentr@gmail.com'
+notifier_account = EmailAccount(notifier_email, getpass.getpass())
+notifier_server = SmtpServer()
+exchange_rates_poller = None
+notifier_sender = EmailSender(notifier_email, notifier_server,
+                              notifier_account)
+
+
+def check_exchange_rates_and_notify(currencies):
+    global poll_interval_in_seconds
+    global notifier_account
+    global exchange_rates_poller
+    if exchange_rates_poller is None:
+        exchange_rates_poller = ExchangeRatesPoller()
+    exchange_rates_poller.poll_data()
+    exchange_rates_msg_list = exchange_rates_poller.check_exchange_rates(
+        currencies)
+    if exchange_rates_msg_list:
+        mail = EmailMsg(Subject='Exchange Rates Notice',
+                        From=notifier_email,
+                        To=[notifier_email],
+                        Text='\n'.join(exchange_rates_msg_list))
+        rc = notifier_sender.send(mail)
+        if rc != 0:
+            logging.error("Sending email failed")
+
+
+def main():
+    global debug_mode_poll_interval_in_seconds
+    parser = argparse.ArgumentParser(
+        description="Simple exchange rates poller",
+        add_help=True)
+    parser.add_argument(
+        '-d',
+        '--debug',
+        dest='debug',
+        action='store_true',
+        default=False,
+        help='Debug: Start with debug mode, polling interval'
+        'will be %s seconds' % debug_mode_poll_interval_in_seconds)
+
+    parser.add_argument(
+        '-c',
+        '--currencies',
+        dest='currencies',
+        nargs='+',
+        default=[],
+        help=('Currencies: specify a list of currencies to check. '
+              'Each currency should be represented in THREE letters.'))
+
+    args = parser.parse_args()
+
+    if args.debug:
+        schedule.every(debug_mode_poll_interval_in_seconds).seconds.do(
+            check_exchange_rates_and_notify, args.currencies)
+    else:
+        schedule.every().monday.at(scheduled_poll_time_str).do(
+            check_exchange_rates_and_notify, args.currencies)
+        schedule.every().tuesday.at(scheduled_poll_time_str).do(
+            check_exchange_rates_and_notify, args.currencies)
+        schedule.every().wednesday.at(scheduled_poll_time_str).do(
+            check_exchange_rates_and_notify, args.currencies)
+        schedule.every().thursday.at(scheduled_poll_time_str).do(
+            check_exchange_rates_and_notify, args.currencies)
+        schedule.every().friday.at(scheduled_poll_time_str).do(
+            check_exchange_rates_and_notify, args.currencies)
+
+    while True:
+        try:
+            logging.info("Schedule loop started...")
+            schedule.run_pending()
+            time.sleep(1)
+        except KeyboardInterrupt:
+            print "KeyboardInterrupt captured, exitting current loop"
+            break
+
+
+if __name__ == '__main__':
+    main()
